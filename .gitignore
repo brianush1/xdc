@@ -1,0 +1,17 @@
+.vscode
+.nvimlog
+.dub
+docs.json
+__dummy.html
+docs/
+/xdc
+xdc.so
+xdc.dylib
+xdc.dll
+xdc.a
+xdc.lib
+xdc-test-*
+*.exe
+*.o
+*.obj
+*.lst

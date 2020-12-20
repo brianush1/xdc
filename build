@@ -1,0 +1,3 @@
+#!/bin/sh
+
+ldc2 -i -I=source -O3 --release --of=xdc source/xdc/app.d
