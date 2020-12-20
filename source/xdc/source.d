@@ -39,6 +39,10 @@ final class Source {
 		}
 	}
 
+	override bool opEquals(Object other) const {
+		return this is other;
+	}
+
 	private size_t lineEnd(size_t i) const {
 		if (i + 1 == lineIndices.length) {
 			return content.length;

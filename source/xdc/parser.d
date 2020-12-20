@@ -106,7 +106,7 @@ struct Token {
 	}
 
 	Span span;
-	SumType!(
+	alias Payload = SumType!(
 		Eof,
 		Identifier,
 		Keyword,
@@ -119,7 +119,8 @@ struct Token {
 		LineComment,
 		BlockComment,
 		NestingBlockComment,
-	) payload;
+	);
+	Payload payload;
 	alias payload this;
 
 	string toString() const {
@@ -316,4 +317,44 @@ public:
 		return this;
 	}
 
+}
+
+unittest {
+	auto src = new Source("file.d", q"( /+ a /+ b +/ c+/ d )");
+	Diagnostic[] diagnostics;
+	Lexer lexer = Lexer(src, diagnostics);
+	assert(lexer.front == Token(
+		Span(src, 1, 17),
+		Token.Payload(Token.NestingBlockComment(" a /+ b +/ c")),
+	));
+}
+
+unittest {
+	auto src = new Source("file.d", q"( /* a /* b */ c*/ d )");
+	Diagnostic[] diagnostics;
+	Lexer lexer = Lexer(src, diagnostics);
+	assert(lexer.front == Token(
+		Span(src, 1, 13),
+		Token.Payload(Token.BlockComment(" a /* b ")),
+	));
+}
+
+unittest {
+	auto src = new Source("file.d", q"( &&&= )");
+	Diagnostic[] diagnostics;
+	Lexer lexer = Lexer(src, diagnostics);
+	assert(lexer.front == Token(
+		Span(src, 1, 3),
+		Token.Payload(Token.Symbol(Symbol!"&&")),
+	));
+	lexer.popFront;
+	assert(lexer.front == Token(
+		Span(src, 3, 5),
+		Token.Payload(Token.Symbol(Symbol!"&=")),
+	));
+	lexer.popFront;
+	assert(lexer.front == Token(
+		Span(src, 6, 6),
+		Token.Payload(Token.Eof()),
+	));
 }
