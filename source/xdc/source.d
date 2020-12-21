@@ -43,8 +43,8 @@ final class Source {
 		return this is other;
 	}
 
-	override size_t toHash() @safe nothrow const {
-		return cast(size_t) this;
+	override size_t toHash() @trusted nothrow const {
+		return cast(size_t) cast(void*) this;
 	}
 
 	private size_t lineEnd(size_t i) const {
