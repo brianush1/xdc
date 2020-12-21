@@ -43,6 +43,10 @@ final class Source {
 		return this is other;
 	}
 
+	override size_t toHash() @safe nothrow const {
+		return cast(size_t) this;
+	}
+
 	private size_t lineEnd(size_t i) const {
 		if (i + 1 == lineIndices.length) {
 			return content.length;
