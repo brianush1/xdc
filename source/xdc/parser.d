@@ -1,5 +1,6 @@
 module xdc.parser;
 import xdc.source;
+import xdc.metadata;
 import sumtype;
 import std.typecons;
 import std.algorithm;
@@ -74,16 +75,20 @@ struct Token {
 		dchar value;
 	}
 
-	struct Integer {
-		enum Suffix {
-			Implicit = 0,
-			Long = 1,
-			Unsigned = 2,
-			LU = Long | Unsigned,
-		}
+	struct UInt {
+		uint value;
+	}
 
+	struct ULong {
 		ulong value;
-		Suffix suffix;
+	}
+
+	struct Int {
+		int value;
+	}
+
+	struct Long {
+		long value;
 	}
 
 	struct Float {
@@ -118,7 +123,10 @@ struct Token {
 		Keyword,
 		String,
 		Char,
-		Integer,
+		UInt,
+		ULong,
+		Int,
+		Long,
 		Float,
 		Double,
 		Symbol,
@@ -137,7 +145,10 @@ struct Token {
 			(Keyword token) => "keyword '" ~ token.name ~ "'",
 			(String token) => "string \"" ~ token.value ~ "\"", // TODO: escapes
 			(Char token) => "char '" ~ token.value.to!string ~ "'",
-			(Integer token) => "integer '" ~ token.value.to!string ~ "'",
+			(UInt token) => "uint '" ~ token.value.to!string ~ "'",
+			(ULong token) => "ulong '" ~ token.value.to!string ~ "'",
+			(Int token) => "int '" ~ token.value.to!string ~ "'",
+			(Long token) => "long '" ~ token.value.to!string ~ "'",
 			(Float token) => "float '" ~ token.value.to!string ~ "'",
 			(Double token) => "double '" ~ token.value.to!string ~ "'",
 			(Symbol token) => "symbol '" ~ SYMBOLS[token.id].to!string ~ "'",
@@ -307,7 +318,53 @@ private:
 		}
 		else if (Chars.isIdentifierStart(first)) {
 			string value = readWhile(c => Chars.isIdentifier(c));
-			if (KEYWORDS.canFind(value)) {
+			if (value == "__EOF__") {
+				result.payload = Token.Eof();
+			}
+			else if (value == "__VENDOR__") {
+				result.payload = Token.String(Vendor);
+			}
+			else if (value == "__VERSION__") {
+				result.payload = Token.Long(Version[0] * 1000 + Version[1]);
+			}
+			else if (value == "__DATE__") {
+				import std.datetime.systime : SysTime, Clock;
+
+				SysTime time = Clock.currTime;
+				string month = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][time.month];
+				string date = time.day.to!string;
+				if (date.length == 0)
+					date = "0" ~ date;
+				string year = time.year.to!string;
+				result.payload = Token.String(month ~ " " ~ date ~ " " ~ year, Token.String.Suffix.Implicit);
+			}
+			else if (value == "__TIME__") {
+				import std.datetime.systime : SysTime, Clock;
+				import std.format : format;
+
+				SysTime time = Clock.currTime;
+				string hour = time.hour.format!"%02s";
+				string min = time.minute.format!"%02s";
+				string sec = time.second.format!"%02s";
+				result.payload = Token.String(hour ~ ":" ~ min ~ ":" ~ sec, Token.String.Suffix.Implicit);
+			}
+			else if (value == "__TIMESTAMP__") {
+				import std.datetime.systime : SysTime, Clock;
+				import std.format : format;
+
+				SysTime time = Clock.currTime;
+				string hour = time.hour.format!"%02s";
+				string min = time.minute.format!"%02s";
+				string sec = time.second.format!"%02s";
+				string month = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][time.month];
+				string day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][time.dayOfWeek];
+				string date = time.day.to!string;
+				if (date.length == 0)
+					date = "0" ~ date;
+				string year = time.year.to!string;
+				result.payload = Token.String(day ~ " " ~ month ~ " " ~ date ~ " " ~ hour ~ ":" ~ min ~ ":" ~ sec ~ " " ~ year, Token.String.Suffix.Implicit);
+			}
+			else if (KEYWORDS.canFind(value)) {
 				result.payload = Token.Keyword(value);
 			}
 			else {
@@ -395,7 +452,6 @@ unittest {
 	));
 }
 
-
 unittest {
 	auto src = new Source("file.d", q"( a123 _754 _ int x bool )");
 	Diagnostic[] diagnostics;
@@ -428,5 +484,26 @@ unittest {
 	assert(lexer.front == Token(
 		Span(src, 19, 23),
 		Token.Payload(Token.Keyword("bool")),
+	));
+}
+
+unittest {
+	import std.algorithm : map;
+
+	auto src = new Source("file.d", q"( __DATE__ __TIME__ __TIMESTAMP__ __VENDOR__ __VERSION__ __EOF__ asdg/ g;hd'gdgh )");
+	Diagnostic[] diagnostics;
+	Lexer lexer = Lexer(src, diagnostics);
+	assert(lexer.map!(x => x.span).array == [
+		Span(src, 1, 9),
+		Span(src, 10, 18),
+		Span(src, 19, 32),
+		Span(src, 33, 43),
+		Span(src, 44, 55),
+	]);
+	while (!lexer.empty)
+		lexer.popFront;
+	assert(lexer.front == Token(
+		Span(src, 56, 63),
+		Token.Payload(Token.Eof()),
 	));
 }
