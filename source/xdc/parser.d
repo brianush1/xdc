@@ -2,9 +2,10 @@ module xdc.parser;
 import xdc.source;
 import sumtype;
 import std.typecons;
+import std.algorithm;
 import std.range;
 import std.utf;
-import std.utf : stride;
+import std.utf : stride, count;
 import std.conv;
 
 immutable(string[]) SYMBOLS = [
@@ -14,7 +15,7 @@ immutable(string[]) SYMBOLS = [
 	">>>", "!", "!=", "(", ")", "[", "]", "{", "}", "?",
 	",", ";", ":", "$", "=", "==", "*", "*=", "%", "%=",
 	"^", "^=", "^^", "^^=", "~", "~=", "@", "=>", "#",
-];
+].sort!((a, b) => b.count < a.count).array;
 
 static foreach (i, symbol; SYMBOLS) {
 	template Symbol(string T) if (T == symbol) {
@@ -44,6 +45,10 @@ immutable(string[]) KEYWORDS = [
 
 struct Token {
 	struct Eof {}
+
+	struct Unknown {
+		string value;
+	}
 
 	struct Identifier {
 		string name;
@@ -108,6 +113,7 @@ struct Token {
 	Span span;
 	alias Payload = SumType!(
 		Eof,
+		Unknown,
 		Identifier,
 		Keyword,
 		String,
@@ -126,6 +132,7 @@ struct Token {
 	string toString() const {
 		return payload.match!(
 			(Eof token) => "<eof>",
+			(Unknown token) => "unknown '" ~ token.value.to!string ~ "'",
 			(Identifier token) => "identifier '" ~ token.name ~ "'",
 			(Keyword token) => "keyword '" ~ token.name ~ "'",
 			(String token) => "string \"" ~ token.value ~ "\"", // TODO: escapes
@@ -288,6 +295,17 @@ private:
 			}
 			nextChars(2);
 			result.payload = Token.NestingBlockComment(value);
+		}
+		else {
+			foreach (i, symbol; SYMBOLS) {
+				if (peekChars(symbol.count) == symbol) {
+					nextChars(symbol.count);
+					result.payload = Token.Symbol(cast(ushort) i);
+					goto foundOne;
+				}
+			}
+			result.payload = Token.Unknown(nextChars(1));
+			foundOne:
 		}
 
 		result.span = Span(source, start, index);
