@@ -155,6 +155,15 @@ private struct Chars {
 			|| c == '\n' || c == '\r';
 	}
 
+	static bool isIdentifierStart(dchar c) {
+		return c == '_' || (c >= 'a' && c <= 'z')
+			|| (c >= 'A' && c <= 'Z');
+	}
+
+	static bool isIdentifier(dchar c) {
+		return isIdentifierStart(c) || (c >= '0' && c <= '9');
+	}
+
 }
 
 struct Lexer {
@@ -296,6 +305,15 @@ private:
 			nextChars(2);
 			result.payload = Token.NestingBlockComment(value);
 		}
+		else if (Chars.isIdentifierStart(first)) {
+			string value = readWhile(c => Chars.isIdentifier(c));
+			if (KEYWORDS.canFind(value)) {
+				result.payload = Token.Keyword(value);
+			}
+			else {
+				result.payload = Token.Identifier(value);
+			}
+		}
 		else {
 			foreach (i, symbol; SYMBOLS) {
 				if (peekChars(symbol.count) == symbol) {
@@ -374,5 +392,41 @@ unittest {
 	assert(lexer.front == Token(
 		Span(src, 6, 6),
 		Token.Payload(Token.Eof()),
+	));
+}
+
+
+unittest {
+	auto src = new Source("file.d", q"( a123 _754 _ int x bool )");
+	Diagnostic[] diagnostics;
+	Lexer lexer = Lexer(src, diagnostics);
+	assert(lexer.front == Token(
+		Span(src, 1, 5),
+		Token.Payload(Token.Identifier("a123")),
+	));
+	lexer.popFront;
+	assert(lexer.front == Token(
+		Span(src, 6, 10),
+		Token.Payload(Token.Identifier("_754")),
+	));
+	lexer.popFront;
+	assert(lexer.front == Token(
+		Span(src, 11, 12),
+		Token.Payload(Token.Identifier("_")),
+	));
+	lexer.popFront;
+	assert(lexer.front == Token(
+		Span(src, 13, 16),
+		Token.Payload(Token.Keyword("int")),
+	));
+	lexer.popFront;
+	assert(lexer.front == Token(
+		Span(src, 17, 18),
+		Token.Payload(Token.Identifier("x")),
+	));
+	lexer.popFront;
+	assert(lexer.front == Token(
+		Span(src, 19, 23),
+		Token.Payload(Token.Keyword("bool")),
 	));
 }
