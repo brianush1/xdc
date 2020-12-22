@@ -156,15 +156,16 @@ private struct Chars {
 
 }
 
-struct Lexer {
-	this(Source source, ref Diagnostic[] diagnostics) {
+class Lexer {
+	Diagnostic[] diagnostics;
+
+	this(Source source) {
 		this.source = source;
-		this.diagnostics = &diagnostics;
 	}
 
 private:
 
-	Diagnostic[]* diagnostics;
+	this() {}
 
 	Source source;
 
@@ -193,6 +194,9 @@ private:
 	}
 
 	dchar nextChar() {
+		if (index >= source.length) {
+			return 0;
+		}
 		dchar result = peekChar;
 		index += source.stride(index);
 		return result;
@@ -245,7 +249,7 @@ private:
 			nextChars(2);
 			string value = readWhile(c => peekChars(2) != "*/");
 			if (eof) {
-				*diagnostics ~= Diagnostic(
+				diagnostics ~= Diagnostic(
 					Diagnostic.Kind.Error,
 					Nullable!Span(Span(source, index, index)),
 					"unclosed block comment",
@@ -277,7 +281,7 @@ private:
 				return nestingCount > 0;
 			});
 			if (eof) {
-				*diagnostics ~= Diagnostic(
+				diagnostics ~= Diagnostic(
 					Diagnostic.Kind.Error,
 					Nullable!Span(Span(source, index, index)),
 					"unclosed nesting block comment",
@@ -294,6 +298,57 @@ private:
 			}
 			nextChars(2);
 			result.payload = Token.NestingBlockComment(value);
+		}
+		else if (first == '"') {
+			// TODO: proper escapes and wysiwyg/hex/token/delimited strings
+			nextChar();
+			bool escape = false;
+			string value = readWhile((c) {
+				if (escape) {
+					escape = false;
+					return true;
+				}
+				else if (c == '\\') {
+					escape = true;
+					return true;
+				}
+				else if (c == '"') {
+					return false;
+				}
+
+				return true;
+			});
+			if (eof) {
+				diagnostics ~= Diagnostic(
+					Diagnostic.Kind.Error,
+					Nullable!Span(Span(source, index, index)),
+					"unclosed string",
+					"expected (\") here, not EOF",
+					0,
+					[
+						Diagnostic.Extra(
+							Diagnostic.Extra.Kind.Note,
+							"string starts here",
+							Nullable!Span(Span(source, start, start + 1)),
+						),
+					],
+				);
+			}
+			nextChar();
+			auto suffix = Token.String.Suffix.Implicit;
+			if (peekChar == 'c') {
+				nextChar();
+				suffix = Token.String.Suffix.Char;
+			}
+			else if (peekChar == 'w') {
+				nextChar();
+				suffix = Token.String.Suffix.Wchar;
+			}
+			else if (peekChar == 'd') {
+				nextChar();
+				suffix = Token.String.Suffix.Dchar;
+			}
+			result.payload = Token.String(value, suffix);
 		}
 		else if (Chars.isIdentifierStart(first)) {
 			string value = readWhile(c => Chars.isIdentifier(c));
@@ -386,15 +441,19 @@ public:
 	}
 
 	Lexer save() {
-		return this;
+		auto result = new Lexer;
+		result.diagnostics = diagnostics;
+		result.source = source;
+		result.peekedToken = peekedToken;
+		result.index = index;
+		return result;
 	}
 
 }
 
 unittest {
 	auto src = new Source("file.d", q"( /+ a /+ b +/ c+/ d )");
-	Diagnostic[] diagnostics;
-	Lexer lexer = Lexer(src, diagnostics);
+	Lexer lexer = new Lexer(src);
 	assert(lexer.front == Token(
 		Span(src, 1, 17),
 		Token.Payload(Token.NestingBlockComment(" a /+ b +/ c")),
@@ -403,8 +462,7 @@ unittest {
 
 unittest {
 	auto src = new Source("file.d", q"( /* a /* b */ c*/ d )");
-	Diagnostic[] diagnostics;
-	Lexer lexer = Lexer(src, diagnostics);
+	Lexer lexer = new Lexer(src);
 	assert(lexer.front == Token(
 		Span(src, 1, 13),
 		Token.Payload(Token.BlockComment(" a /* b ")),
@@ -413,8 +471,7 @@ unittest {
 
 unittest {
 	auto src = new Source("file.d", q"( &&&= )");
-	Diagnostic[] diagnostics;
-	Lexer lexer = Lexer(src, diagnostics);
+	Lexer lexer = new Lexer(src);
 	assert(lexer.front == Token(
 		Span(src, 1, 3),
 		Token.Payload(Token.Symbol(Symbol!"&&")),
@@ -433,8 +490,7 @@ unittest {
 
 unittest {
 	auto src = new Source("file.d", q"( a123 _754 _ int x bool )");
-	Diagnostic[] diagnostics;
-	Lexer lexer = Lexer(src, diagnostics);
+	Lexer lexer = new Lexer(src);
 	assert(lexer.front == Token(
 		Span(src, 1, 5),
 		Token.Payload(Token.Identifier("a123")),
@@ -470,8 +526,7 @@ unittest {
 	import std.algorithm : map;
 
 	auto src = new Source("file.d", q"( __DATE__ __TIME__ __TIMESTAMP__ __VENDOR__ __VERSION__ __EOF__ asdg/ g;hd'gdgh )");
-	Diagnostic[] diagnostics;
-	Lexer lexer = Lexer(src, diagnostics);
+	Lexer lexer = new Lexer(src);
 	assert(lexer.map!(x => x.span).array == [
 		Span(src, 1, 9),
 		Span(src, 10, 18),
@@ -479,8 +534,6 @@ unittest {
 		Span(src, 33, 43),
 		Span(src, 44, 55),
 	]);
-	while (!lexer.empty)
-		lexer.popFront;
 	assert(lexer.front == Token(
 		Span(src, 56, 63),
 		Token.Payload(Token.Eof()),

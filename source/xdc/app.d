@@ -2,7 +2,7 @@ import xdc.source;
 import xdc.parser;
 import std.conv : to;
 
-void main_(ref Diagnostic[] diagnostics, string[] args) {
+Diagnostic[] main_(string[] args) {
 	import std.stdio : writeln, File;
 	import std.algorithm : map, joiner;
 
@@ -11,8 +11,10 @@ void main_(ref Diagnostic[] diagnostics, string[] args) {
 		f.close();
 	string source = f.readln('\0'); // not the right way to do this, but it's temporary code anyway
 	Source src = new Source("arsd/terminal.d", source);
-	Lexer lexer = Lexer(src, diagnostics);
+	Lexer lexer = new Lexer(src);
 	writeln(lexer.map!(x => x.to!string).joiner("\n"));
+
+	return lexer.diagnostics;
 }
 
 int main(string[] args) {
@@ -28,7 +30,7 @@ int main(string[] args) {
 	try {
 		import std.algorithm : any;
 
-		main_(diagnostics, args);
+		diagnostics ~= main_(args);
 
 		if (diagnostics.any!(x => x.kind == Diagnostic.Kind.InternalError)) {
 			return 2;
@@ -44,8 +46,7 @@ int main(string[] args) {
 		import std.typecons : Nullable;
 
 		diagnostics ~= Diagnostic(Diagnostic.Kind.InternalError,
-			Nullable!Span.init, e.file ~ ":" ~ e.line.to!string
-				~ ":" ~ e.msg, "", 0, []
+			Nullable!Span.init, e.to!string, "", 0, []
 		);
 		return 2;
 	}
